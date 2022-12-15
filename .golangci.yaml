@@ -64,6 +64,8 @@ linters-settings:
         disabled: true
       - name: var-naming
         disabled: true
+      - name: unexported-naming
+        disabled: true
       - name: unhandled-error
         disabled: true
       - name: atomic
@@ -101,7 +103,6 @@ linters-settings:
       - name: time-equal
       - name: var-declaration
       - name: unconditional-recursion
-      - name: unexported-naming
       - name: unexported-return
       - name: unnecessary-stmt
       - name: unreachable-code
