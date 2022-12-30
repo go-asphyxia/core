@@ -3,7 +3,6 @@ package bytes
 import (
 	"io"
 	"unicode/utf8"
-	"unsafe"
 )
 
 type (
@@ -27,7 +26,7 @@ func (B *Buffer) Set(source []byte) {
 }
 
 func (B *Buffer) SetString(source string) {
-	B.List = append(B.List[:0], unsafe.Slice(unsafe.StringData(source), len(source))...)
+	B.List = append(B.List[:0], source...)
 }
 
 func (B *Buffer) Write(source []byte) (n int, err error) {
@@ -64,40 +63,42 @@ func (B *Buffer) WriteRune(source rune) (n int, err error) {
 func (B *Buffer) WriteString(source string) (n int, err error) {
 	n = len(source)
 
-	B.List = append(B.List, unsafe.Slice(unsafe.StringData(source), len(source))...)
+	B.List = append(B.List, source...)
 	return
 }
 
-func (B *Buffer) ReadFrom(source io.Reader) (n int64, err error) {
-	l := len(B.List)
-	c := cap(B.List)
+func (buffer *Buffer) ReadFrom(source io.Reader) (n int64, err error) {
+	l := len(buffer.List)
+	c := cap(buffer.List)
 	r := 0
 
 	reallocation := []byte(nil)
 
-	for {
+cycle:
+
+	r, err = source.Read(buffer.List[l:c])
+
+	n += int64(r)
+	l += r
+
+	buffer.List = buffer.List[:l]
+
+	if err == nil {
 		if l == c {
-			c = (c + 64) << 2
-
-			reallocation = make([]byte, c)
-			copy(reallocation, B.List)
-
-			B.List = reallocation
+			goto cycle
 		}
 
-		r, err = source.Read(B.List[l:c])
+		c = (c + 64) << 2
 
-		n += int64(r)
-		l += r
+		reallocation = make([]byte, c)
+		copy(reallocation, buffer.List)
 
-		B.List = B.List[:l]
+		buffer.List = reallocation
 
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-			}
-
-			return
-		}
+		goto cycle
+	} else if err == io.EOF {
+		return n, nil
 	}
+
+	return
 }
