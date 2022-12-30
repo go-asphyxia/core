@@ -4,203 +4,95 @@ import (
 	"io"
 	"unicode/utf8"
 	"unsafe"
-
-	"github.com/go-asphyxia/core"
-	"github.com/go-asphyxia/core/conversion"
 )
 
 type (
-	Buffer BufferOf[byte]
-
-	BufferOf[B core.Byte] struct {
-		Bytes []B
+	Buffer struct {
+		List []byte
 	}
 )
 
-func NewBuffer() (b *Buffer) {
-	b = (*Buffer)(NewBufferOf[byte]())
-	return
-}
-
-func NewBufferOf[B core.Byte]() (b *BufferOf[B]) {
-	b = &BufferOf[B]{}
-	return
-}
-
-func Clone(b *Buffer) (target *Buffer) {
-	target = (*Buffer)(CloneOf((*BufferOf[byte])(b)))
-	return
-}
-
-func CloneOf[B core.Byte](b *BufferOf[B]) (target *BufferOf[B]) {
-	target = &BufferOf[B]{
-		Bytes: make([]B, len(b.Bytes)),
+func (B *Buffer) Clone() *Buffer {
+	return &Buffer{
+		List: append([]byte(nil), B.List...),
 	}
-
-	copy(target.Bytes, b.Bytes)
-	return
 }
 
-func Grow(b *Buffer, n int) {
-	GrowOf((*BufferOf[byte])(b), n)
+func (B *Buffer) Reset() {
+	B.List = B.List[:0]
 }
 
-func GrowOf[B core.Byte](b *BufferOf[B], n int) {
-	s := len(b.Bytes) + n
-
-	if s <= cap(b.Bytes) {
-		b.Bytes = b.Bytes[:s]
-		return
-	}
-
-	temp := make([]B, s)
-
-	copy(temp, b.Bytes)
-
-	b.Bytes = temp
+func (B *Buffer) Set(source []byte) {
+	B.List = append(B.List[:0], source...)
 }
 
-func Clip(b *Buffer, n int) {
-	ClipOf((*BufferOf[byte])(b), n)
+func (B *Buffer) SetString(source string) {
+	B.List = append(B.List[:0], unsafe.Slice(unsafe.StringData(source), len(source))...)
 }
 
-func ClipOf[B core.Byte](b *BufferOf[B], n int) {
-	b.Bytes = b.Bytes[:len(b.Bytes)-n]
-}
-
-func Reset(b *Buffer) {
-	ResetOf((*BufferOf[byte])(b))
-}
-
-func ResetOf[B core.Byte](b *BufferOf[B]) {
-	b.Bytes = b.Bytes[:0]
-}
-
-func Close(b *Buffer) {
-	CloseOf((*BufferOf[byte])(b))
-}
-
-func CloseOf[B core.Byte](b *BufferOf[B]) {
-	b.Bytes = nil
-}
-
-func Copy(b *Buffer) (target []byte) {
-	target = CopyOf((*BufferOf[byte])(b))
-	return
-}
-
-func CopyOf[B core.Byte](b *BufferOf[B]) (target []B) {
-	target = make([]B, len(b.Bytes))
-
-	copy(target, b.Bytes)
-	return
-}
-
-func Set(b *Buffer, source []byte) {
-	SetOf((*BufferOf[byte])(b), source)
-}
-
-func SetOf[B core.Byte](b *BufferOf[B], source []B) {
-	b.Bytes = append(b.Bytes[:0], source...)
-}
-
-func SetString(b *Buffer, source string) {
-	SetStringOf((*BufferOf[byte])(b), source)
-}
-
-func SetStringOf[S core.String, B core.Byte](b *BufferOf[B], source S) {
-	b.Bytes = append(b.Bytes[:0], conversion.StringToBytesNoCopyOf[B](source)...)
-}
-
-func Write(b *Buffer, source []byte) (n int, err error) {
-	n, err = WriteOf((*BufferOf[byte])(b), source)
-	return
-}
-
-func WriteOf[B core.Byte](b *BufferOf[B], source []B) (n int, err error) {
+func (B *Buffer) Write(source []byte) (n int, err error) {
 	n = len(source)
 
-	b.Bytes = append(b.Bytes, source...)
+	B.List = append(B.List, source...)
 	return
 }
 
-func WriteByte(b *Buffer, source byte) (err error) {
-	err = WriteByteOf((*BufferOf[byte])(b), source)
+func (B *Buffer) WriteByte(source byte) (err error) {
+	B.List = append(B.List, source)
 	return
 }
 
-func WriteByteOf[B core.Byte](b *BufferOf[B], source B) (err error) {
-	b.Bytes = append(b.Bytes, source)
-	return
-}
+func (B *Buffer) WriteRune(source rune) (n int, err error) {
+	l := len(B.List)
+	c := cap(B.List)
 
-func WriteRune(b *Buffer, source rune) (n int, err error) {
-	n, err = WriteRuneOf((*BufferOf[byte])(b), source)
-	return
-}
+	sum := l + utf8.UTFMax
 
-func WriteRuneOf[R core.Rune, B core.Byte](b *BufferOf[B], source R) (n int, err error) {
-	l := len(b.Bytes)
-	c := cap(b.Bytes)
+	if sum > c {
+		reallocation := make([]byte, sum)
+		copy(reallocation, B.List)
 
-	s := l + utf8.UTFMax
-
-	if s > c {
-		temp := make([]B, s)
-
-		copy(temp, b.Bytes)
-
-		b.Bytes = temp
+		B.List = reallocation
 	}
 
-	slice := *(*[]byte)(unsafe.Pointer(&b.Bytes))
+	n = utf8.EncodeRune(B.List[l:sum], source)
 
-	n = utf8.EncodeRune(slice[l:s], rune(source))
-
-	b.Bytes = b.Bytes[:(l + n)]
+	B.List = B.List[:(l + n)]
 	return
 }
 
-func WriteString(b *Buffer, source string) (n int, err error) {
-	n, err = WriteStringOf((*BufferOf[byte])(b), source)
-	return
-}
-
-func WriteStringOf[S core.String, B core.Byte](b *BufferOf[B], source S) (n int, err error) {
+func (B *Buffer) WriteString(source string) (n int, err error) {
 	n = len(source)
 
-	b.Bytes = append(b.Bytes, conversion.StringToBytesNoCopyOf[B](source)...)
+	B.List = append(B.List, unsafe.Slice(unsafe.StringData(source), len(source))...)
 	return
 }
 
-func ReadFrom(b *Buffer, source core.Reader) (n int64, err error) {
-	n, err = ReadFromOf((*BufferOf[byte])(b), (core.ReaderOf[byte])(source))
-	return
-}
-
-func ReadFromOf[B core.Byte](b *BufferOf[B], source core.ReaderOf[B]) (n int64, err error) {
-	l := len(b.Bytes)
-	c := cap(b.Bytes)
+func (B *Buffer) ReadFrom(source io.Reader) (n int64, err error) {
+	l := len(B.List)
+	c := cap(B.List)
 	r := 0
+
+	reallocation := []byte(nil)
 
 	for {
 		if l == c {
-			c = (c + 16) * 2
+			c = (c + 64) << 2
 
-			temp := make([]B, c)
-			copy(temp, b.Bytes)
+			reallocation = make([]byte, c)
+			copy(reallocation, B.List)
 
-			b.Bytes = temp
+			B.List = reallocation
 		}
 
-		r, err = source.ReadOf(b.Bytes[l:c])
+		r, err = source.Read(B.List[l:c])
 
 		n += int64(r)
 		l += r
 
-		b.Bytes = b.Bytes[:l]
+		B.List = B.List[:l]
 
-		if err != nil || l < c {
+		if err != nil {
 			if err == io.EOF {
 				err = nil
 			}
